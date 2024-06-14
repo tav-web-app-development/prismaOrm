@@ -9,15 +9,38 @@ app.use(express.json());
 app.post(`/post`, async (req, res) => {
   //create a new post and associate it with an author
   const { title, content, authorEmail } = req.body;
-  const result = await prisma;
-  res.json(result);
+  console.error("look: ", req.body);
+  try {
+    const result = await prisma.post.create({
+      data: {
+        title: title,
+        content: content,
+        published: false,
+        author: {
+          connect: {
+            email: authorEmail,
+          },
+        },
+      },
+    });
+    res.json(result);
+  } catch (err) {
+    console.error("Look :", err);
+  }
 });
 
 app.put("/post/:id/views", async (req, res) => {
   const { id } = req.params;
   //update the view count field for a specific post
   try {
-    const post = await prisma;
+    const post = await prisma.post.update({
+      where: {
+        id: Number(id),
+      },
+      data: {
+        viewCount: 3,
+      },
+    });
 
     res.json(post);
   } catch (error) {
@@ -41,28 +64,61 @@ app.put("/publish/:id", async (req, res) => {
 app.delete(`/post/:id`, async (req, res) => {
   //delete the post
   const { id } = req.params;
-  const post = await prisma;
-  res.json(post);
+  try {
+    const post = await prisma.post.delete({
+      where: {
+        id: Number(id),
+      },
+    });
+    res.json({ message: `The row with ${id} was delete, ${post}` });
+  } catch (err) {
+    console.error("look:", err);
+  }
 });
 
 app.get("/users", async (req, res) => {
   //return all the users
-  const users = await prisma;
-  res.json(users);
+  try {
+    const users = await prisma.user.findMany();
+    res.json(users);
+  } catch (err) {
+    console.error("Something happened", err);
+  }
 });
 
 app.get("/user/:id/drafts", async (req, res) => {
   const { id } = req.params;
   //return all posts where the published field equals false
-  const drafts = await prisma;
-  res.json(drafts);
+  try {
+    const drafts = await prisma.user.findMany({
+      where: {
+        authorId: Number(id),
+      },
+      posts: {
+        some: {
+          published: false,
+        },
+      },
+    });
+    res.json(drafts);
+  } catch (err) {
+    console.error("something wrong: ", err);
+  }
 });
 
 app.get(`/post/:id`, async (req, res) => {
   const { id }: { id?: string } = req.params;
   //return the post
-  const post = await prisma;
-  res.json(post);
+  try {
+    const post = await prisma.post.findUnique({
+      where: {
+        id: Number(id),
+      },
+    });
+    res.json(post);
+  } catch (err) {
+    console.error(err);
+  }
 });
 
 app.get("/feed", async (req, res) => {
@@ -73,10 +129,36 @@ app.get("/feed", async (req, res) => {
   // 4. take the amount of posts specified
   // 5. order the posts by the field `updated_at` descending or ascending basesd on the parameter `orderBy`
   // 6. if the `searchString` parameter is not an empty, use the string to filter posts not matching the post titles or post content
-
-  const posts = await prisma.post.findMany();
-
-  res.json(posts);
+  try {
+    const posts = await prisma.post.findMany({
+      where: {
+        published: true,
+        OR: [
+          {
+            title: {
+              contains: String(searchString),
+            },
+          },
+          {
+            content: {
+              contains: String(searchString),
+            },
+          },
+        ],
+      },
+      include: {
+        author: true,
+      },
+      skip: Number(skip),
+      take: Number(take),
+      orderBy: {
+        updatedAt: orderBy === "asc" ? "asc" : "desc",
+      },
+    });
+    res.json(posts);
+  } catch (err) {
+    console.error("check this error: ", err);
+  }
 });
 
 const server = app.listen(3000, () =>
